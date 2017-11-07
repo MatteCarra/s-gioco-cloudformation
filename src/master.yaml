@@ -19,9 +19,17 @@ Parameters:
         Description: Sets rds database password
         Type: String
         NoEcho: true
-
+    NatEnabled:
+        Description: Setup nat instances for private subnets
+        Type: String
+        Default: false
+        AllowedValues:
+            - true
+            - false
+Conditions:
+    HasNATEnabled: !Equals [!Ref NatEnabled, 'true']
+    
 Resources:
-
     VPC:
         Type: AWS::CloudFormation::Stack
         Properties:
@@ -29,23 +37,25 @@ Resources:
             Parameters:
                 ClassB: 180
 
-    #NATa:
-    #    Type: AWS::CloudFormation::Stack
-    #    Properties:
-    #        TemplateURL: https://s3-eu-west-1.amazonaws.com/s-gioco-cloudformation/infrastracture/nat-instances.yml
-    #        Parameters:
-    #            EnvironmentName: !Ref AWS::StackName
-    #            ParentVPCStack: !GetAtt VPC.Outputs.StackName
-    #            SubnetZone: "A"
+    NATa:
+        Type: AWS::CloudFormation::Stack
+        Condition: HasNATEnabled
+        Properties:
+            TemplateURL: https://s3-eu-west-1.amazonaws.com/s-gioco-cloudformation/infrastracture/nat-instances.yml
+            Parameters:
+                EnvironmentName: !Ref AWS::StackName
+                ParentVPCStack: !GetAtt VPC.Outputs.StackName
+                SubnetZone: "A"
     
-    #NATb:
-    #    Type: AWS::CloudFormation::Stack
-    #    Properties:
-    #        TemplateURL: https://s3-eu-west-1.amazonaws.com/s-gioco-cloudformation/infrastracture/nat-instances.yml
-    #        Parameters:
-    #            EnvironmentName: !Ref AWS::StackName
-    #            ParentVPCStack: !GetAtt VPC.Outputs.StackName
-    #            SubnetZone: "B"
+    NATb:
+        Type: AWS::CloudFormation::Stack
+        Condition: HasNATEnabled
+        Properties:
+            TemplateURL: https://s3-eu-west-1.amazonaws.com/s-gioco-cloudformation/infrastracture/nat-instances.yml
+            Parameters:
+                EnvironmentName: !Ref AWS::StackName
+                ParentVPCStack: !GetAtt VPC.Outputs.StackName
+                SubnetZone: "B"
 
     SecurityGroups:
         Type: AWS::CloudFormation::Stack
