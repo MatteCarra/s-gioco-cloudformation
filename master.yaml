@@ -12,6 +12,9 @@ Description: >
     and an ElasticDomain
 
 Parameters:
+    RdsDatabaseName:
+        Description: Sets rds database name
+        Type: String
     RdsDatabasePassword:
         Description: Sets rds database password
         Type: String
@@ -58,7 +61,8 @@ Resources:
             TemplateURL: https://s3-eu-west-1.amazonaws.com/s-gioco-cloudformation/infrastracture/rds.yaml
             Parameters:
                 EnvironmentName: !Ref AWS::StackName
-                MasterUsername: !Ref AWS::StackName
+                RdsDatabaseName: !Ref RdsDatabaseName
+                MasterUsername: !Ref RdsDatabaseName
                 MasterPassword: !Ref RdsDatabasePassword
                 Subnets: !GetAtt VPC.Outputs.SubnetsPrivate
                 SecurityGroup: !GetAtt SecurityGroups.Outputs.RdsSecurityGroup

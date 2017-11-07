@@ -7,6 +7,10 @@ Parameters:
         Description: An environment name that will be prefixed to resource names
         Type: String
 
+    RdsDatabaseName:
+        Description: Sets rds database name
+        Type: String
+        
     MasterUsername:
         Type: String
         Description: Master username
@@ -40,11 +44,6 @@ Parameters:
         Description: Database engine version
         Default: 5.6.35
 
-    ParameterGroupFamily:
-        Type: String
-        Description: Parameter group family
-        Default: mysql5.6
-
     SecurityGroup:
       Description: Security group to assign to the db
       Type: AWS::EC2::SecurityGroup::Id
@@ -60,19 +59,11 @@ Resources:
     Properties:
       DBSubnetGroupDescription: !Sub ${EnvironmentName} Subnet Group
       SubnetIds: !Ref Subnets
-
-  ParameterGroup:
-    Type: "AWS::RDS::DBParameterGroup"
-    Properties:
-      Description: !Sub ${EnvironmentName} Parameter group
-      Family: !Ref ParameterGroupFamily
-      Parameters:
-        log_bin_trust_function_creators: 1
-
+      
   RdsDB:
     Type: AWS::RDS::DBInstance
     Properties:
-      DBName: !Ref EnvironmentName
+      DBName: !Ref RdsDatabaseName
       AllocatedStorage: !Ref AllocatedStorage
       DBInstanceClass: !Ref DBInstanceClass
       Engine: !Ref Engine
@@ -81,7 +72,6 @@ Resources:
       MasterUserPassword: !Ref MasterPassword
       MultiAZ: !Ref MultiAZ
       DBSubnetGroupName: !Ref SubnetGroup
-      DBParameterGroupName: !Ref ParameterGroup
       VPCSecurityGroups:
         - !Ref SecurityGroup
       Tags:
