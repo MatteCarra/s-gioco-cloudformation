@@ -1,0 +1,108 @@
+Description: >
+    This template deploys an rds database
+
+Parameters:
+
+    EnvironmentName:
+        Description: An environment name that will be prefixed to resource names
+        Type: String
+
+    MasterUsername:
+        Type: String
+        Description: Master username
+
+    MasterPassword:
+        Type: String
+        Description: Master password
+
+    AllocatedStorage:
+        Type: String
+        Description: DB llocated storage
+        Default: 15
+
+    DBInstanceClass:
+        Type: String
+        Description: The instance class for the db
+        Default: db.t2.micro
+
+    MultiAZ:
+        Type: String
+        Description: Multi-AZ
+        Default: false
+
+    Engine:
+        Type: String
+        Description: Database engine
+        Default: MySQL
+
+    EngineVersion:
+        Type: String
+        Description: Database engine version
+        Default: 5.6.35
+
+    ParameterGroupFamily:
+        Type: String
+        Description: Parameter group family
+        Default: mysql5.6
+
+    SecurityGroup:
+      Description: Security group to assign to the db
+      Type: AWS::EC2::SecurityGroup::Id
+
+    Subnets:
+        Description: Choose which subnets the Applicaion Load Balancer should be deployed to
+        Type: List<AWS::EC2::Subnet::Id>
+
+Resources:
+
+  SubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: !Sub ${EnvironmentName} Subnet Group
+      SubnetIds: !Ref Subnets
+
+  ParameterGroup:
+    Type: "AWS::RDS::DBParameterGroup"
+    Properties:
+      Description: !Sub ${EnvironmentName} Parameter group
+      Family: !Ref ParameterGroupFamily
+      Parameters:
+        log_bin_trust_function_creators: 1
+
+  RdsDB:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBName: !Ref EnvironmentName
+      AllocatedStorage: !Ref AllocatedStorage
+      DBInstanceClass: !Ref DBInstanceClass
+      Engine: !Ref Engine
+      EngineVersion: !Ref EngineVersion
+      MasterUsername: !Ref MasterUsername
+      MasterUserPassword: !Ref MasterPassword
+      MultiAZ: !Ref MultiAZ
+      DBSubnetGroupName: !Ref SubnetGroup
+      DBParameterGroupName: !Ref ParameterGroup
+      VPCSecurityGroups:
+        - !Ref SecurityGroup
+      Tags:
+        -
+          Key: Name
+          Value: !Sub ${EnvironmentName} ${Engine} Database
+
+Outputs:
+
+    RdsHost:
+        Description: A reference to the rds db host
+        Value: !GetAtt RdsDB.Endpoint.Address
+
+    RdsPort:
+        Description: A reference to the rds db port
+        Value: !GetAtt RdsDB.Endpoint.Port
+
+    DatabaseName:
+        Description: The name of the database
+        Value: !Ref EnvironmentName
+
+    MasterUsername:
+        Description: Master username
+        Value: !Ref MasterUsername

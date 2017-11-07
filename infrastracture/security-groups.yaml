@@ -1,0 +1,47 @@
+Description: >
+    This template contains the security groups required by our entire stack.
+    We create them in a seperate nested template, so they can be referenced
+    by all of the other nested templates.
+
+Parameters:
+    
+    EnvironmentName:
+        Description: An environment name that will be prefixed to resource names
+        Type: String
+    
+    VPC:
+        Type: AWS::EC2::VPC::Id
+        Description: Choose which VPC the security groups should be deployed to
+
+Resources:
+    LambdaSecurityGroup:
+        Type: AWS::EC2::SecurityGroup
+        Properties: 
+            VpcId: !Ref VPC
+            GroupDescription: Lambda security group
+            Tags: 
+                - Key: Name
+                  Value: !Sub ${EnvironmentName}-Lamba
+
+    RdsSecurityGroup:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+            VpcId: !Ref VPC
+            GroupDescription: Access to the rds db that is used by ECS
+            SecurityGroupIngress:
+                # Allow access from anywhere to our lambdas
+                - SourceSecurityGroupId: !Ref LambdaSecurityGroup
+                  IpProtocol: -1
+            Tags:
+                - Key: Name
+                  Value: !Sub ${EnvironmentName}-Rds
+
+Outputs:
+
+    LambdaSecurityGroup:
+        Description: A reference to the security group for lambda
+        Value: !Ref LambdaSecurityGroup
+
+    RdsSecurityGroup:
+        Description: A reference to the security group for rds
+        Value: !Ref RdsSecurityGroup

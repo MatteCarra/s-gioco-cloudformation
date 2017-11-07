@@ -1,0 +1,210 @@
+Description: >
+    It deploys a pair of NAT instances (one in each AZ),
+        and default routes for them in the private subnets.
+
+Parameters:
+
+    EnvironmentName:
+        Description: An environment name that will be prefixed to resource names
+        Type: String
+
+    ParentVPCStack:
+      Description: 'Stack name of parent VPC stack.'
+      Type: String
+
+    NatInstanceType:
+        Description: Nat Intance type
+        Type: String
+        Default: t2.nano
+
+    SubnetZone:
+      Description: 'Subnet zone.'
+      Type: String
+      Default: A
+      AllowedValues:
+      - A
+      - B
+      - C
+      - D
+
+Mappings:
+  AWSRegionNatAMI:
+    'ap-south-1':
+      NATAMI: 'ami-6dc38202'
+    'eu-west-2':
+      NATAMI: 'ami-e07d6f84'
+    'eu-west-1':
+      NATAMI: 'ami-38d20741'
+    'ap-northeast-2':
+      NATAMI: 'ami-61e03a0f'
+    'ap-northeast-1':
+      NATAMI: 'ami-17944271'
+    'sa-east-1':
+      NATAMI: 'ami-6a354a06'
+    'ca-central-1':
+      NATAMI: 'ami-f055ec94'
+    'ap-southeast-1':
+      NATAMI: 'ami-0597ea66'
+    'ap-southeast-2':
+      NATAMI: 'ami-2c37d74e'
+    'eu-central-1':
+      NATAMI: 'ami-3cec5e53'
+    'us-east-1':
+      NATAMI: 'ami-b419e7ce'
+    'us-east-2':
+      NATAMI: 'ami-8c002de9'
+    'us-west-1':
+      NATAMI: 'ami-36ebdb56'
+    'us-west-2':
+      NATAMI: 'ami-d08b70a8'
+
+Resources:
+
+    Nat1EIP:
+        Type: 'AWS::EC2::EIP'
+        Properties:
+          Domain: vpc
+
+    NATInstanceProfile:
+      Type: 'AWS::IAM::InstanceProfile'
+      Properties:
+        Path: '/'
+        Roles:
+        - !Ref NATIAMRole
+
+    NATIAMRole:
+      Type: 'AWS::IAM::Role'
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+              - 'ec2.amazonaws.com'
+            Action:
+            - 'sts:AssumeRole'
+        Path: '/'
+        Policies:
+        - PolicyName: ec2
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Sid: Stmt1425023276000
+              Effect: Allow
+              Action:
+              - 'ec2:AssociateAddress'
+              - 'ec2:ModifyInstanceAttribute'
+              - 'ec2:CreateRoute'
+              - 'ec2:ReplaceRoute'
+              Resource:
+              - '*'
+
+    SecurityGroup:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+            VpcId:
+              'Fn::ImportValue': !Sub '${ParentVPCStack}-VPC'
+            GroupDescription: Access to NAT instances
+            SecurityGroupIngress:
+                # Only allow inbound access to ECS from the ELB
+                - CidrIp: !Sub
+                  - '10.${ClassB}.0.0/16'
+                  - ClassB:
+                      'Fn::ImportValue': !Sub '${ParentVPCStack}-ClassB'
+                  IpProtocol: -1
+            Tags:
+                - Key: Name
+                  Value: !Sub ${EnvironmentName}-NAT
+
+    NATLaunchConfiguration:
+        Type: 'AWS::AutoScaling::LaunchConfiguration'
+        Metadata:
+          'AWS::CloudFormation::Init':
+            config:
+              files:
+                '/etc/cfn/cfn-hup.conf':
+                  content: !Sub |
+                    [main]
+                    stack=${AWS::StackId}
+                    region=${AWS::Region}
+                    interval=1
+                  mode: '000400'
+                  owner: root
+                  group: root
+                '/etc/cfn/hooks.d/cfn-auto-reloader.conf':
+                  content: !Sub |
+                    [cfn-auto-reloader-hook]
+                    triggers=post.update
+                    path=Resources.NATLaunchConfiguration.Metadata.AWS::CloudFormation::Init
+                    action=/opt/aws/bin/cfn-init --verbose --stack=${AWS::StackName} --region=${AWS::Region} --resource=NATLaunchConfiguration
+                    runas=root
+              services:
+                sysvinit:
+                  cfn-hup:
+                    enabled: true
+                    ensureRunning: true
+                    files:
+                    - '/etc/cfn/cfn-hup.conf'
+                    - '/etc/cfn/hooks.d/cfn-auto-reloader.conf'
+        Properties:
+          AssociatePublicIpAddress: true
+          IamInstanceProfile: !Ref NATInstanceProfile
+          EbsOptimized: false
+          ImageId: !FindInMap [AWSRegionNatAMI, !Ref 'AWS::Region', NATAMI]
+          InstanceType: !Ref NatInstanceType
+          SecurityGroups:
+          - !Ref SecurityGroup
+          UserData:
+            'Fn::Base64': !Sub
+              - |
+                #!/bin/bash -x
+                bash -ex << "TRY"
+                  INSTANCEID=$(curl -s -m 60 http://169.254.169.254/latest/meta-data/instance-id)
+                  aws --region ${Region} ec2 associate-address --instance-id $INSTANCEID --allocation-id ${EIPAllocationId}
+                  aws --region ${Region} ec2 modify-instance-attribute --instance-id $INSTANCEID --source-dest-check "{\"Value\": false}"
+                  aws --region ${Region} ec2 replace-route --route-table-id ${RouteTablePrivate} --destination-cidr-block "0.0.0.0/0" --instance-id $INSTANCEID || aws --region ${Region} ec2 create-route --route-table-id ${RouteTablePrivate} --destination-cidr-block "0.0.0.0/0" --instance-id $INSTANCEID
+                  /opt/aws/bin/cfn-init -v --stack ${StackName} --resource NATLaunchConfiguration --region ${Region}
+                TRY
+                /opt/aws/bin/cfn-signal -e $? --region ${Region} --stack ${StackName} --resource NATAutoScalingGroup
+              - RouteTablePrivate:
+                  'Fn::ImportValue': !Sub '${ParentVPCStack}-RouteTable${SubnetZone}Private'
+                Region:
+                  !Ref 'AWS::Region'
+                StackName:
+                  !Ref 'AWS::StackName'
+                EIPAllocationId:
+                  !Sub '${Nat1EIP.AllocationId}'
+
+    NATAutoScalingGroup:
+      Type: 'AWS::AutoScaling::AutoScalingGroup'
+      Properties:
+        DesiredCapacity: 1
+        LaunchConfigurationName: !Ref NATLaunchConfiguration
+        MaxSize: 1
+        MinSize: 1
+        Tags:
+        - Key: Name
+          Value: 'notesonline NAT instance'
+          PropagateAtLaunch: true
+        VPCZoneIdentifier:
+          - 'Fn::ImportValue': !Sub '${ParentVPCStack}-Subnet${SubnetZone}Public'
+      CreationPolicy:
+        ResourceSignal:
+          Count: 1
+          Timeout: PT10M
+      UpdatePolicy:
+        AutoScalingRollingUpdate:
+          PauseTime: PT10M
+          WaitOnResourceSignals: true
+
+Outputs:
+    StackName:
+      Description: 'Stack name'
+      Value: !Sub '${AWS::StackName}'
+
+    IPAddress:
+      Description: 'The public IP address of the NAT instance.'
+      Value: !Ref Nat1EIP
+      Export:
+        Name: !Sub '${AWS::StackName}-IPAddress'
